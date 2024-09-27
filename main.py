@@ -1,6 +1,44 @@
 import cv2
 import numpy as np
 import subprocess
+import os
+
+
+def frame_to_time(frame, fps):
+    """
+    프레임을 시간(초)으로 변환
+    :param frame: 프레임 번호
+    :param fps: 초당 프레임 수 (Frames Per Second)
+    :return: 초 (시간 단위)
+    """
+    return frame / fps
+
+
+def extract_and_cut_audio(input_media, cut_ranges, fps, output_audio_directory):
+    """
+    MP4 파일에서 오디오를 추출하고, 프레임 구간에 맞춰 오디오를 자르는 함수
+    :param input_media: 원본 MP4 파일 경로
+    :param cut_ranges: (시작 프레임, 끝 프레임) 리스트
+    :param fps: 프레임 속도 (Frames Per Second)
+    :param output_audio_directory: 잘린 오디오 파일을 저장할 경로
+    """
+    if not os.path.exists(output_audio_directory):
+        os.makedirs(output_audio_directory)
+
+    for idx, (start_frame, end_frame) in enumerate(cut_ranges):
+        # 프레임을 시간(초)으로 변환
+        start_time = frame_to_time(start_frame, fps)
+        end_time = frame_to_time(end_frame, fps)
+
+        # 출력 파일명 생성
+        output_audio = f"{output_audio_directory}/cut_audio_{idx + 1}.mp3"
+
+        # FFmpeg 명령어 생성 및 실행 (mp4에서 오디오만 추출하여 잘라냄)
+        command = [
+            'ffmpeg', '-i', input_media, '-ss', str(start_time), '-to', str(end_time),
+            '-q:a', '0', '-map', 'a', output_audio
+        ]
+        subprocess.run(command)
 
 
 def cut_video(input_path, output_path, start_frame, end_frame):
@@ -33,6 +71,28 @@ def cut_video(input_path, output_path, start_frame, end_frame):
     out.release()
     print(f"영상이 성공적으로 저장되었습니다: {output_path}")
     return True
+
+
+def merge_audio_video(cut_video_files, cut_audio_files, output_merged_directory):
+    """
+    잘린 영상과 잘린 오디오를 합쳐서 새로운 영상 파일을 생성하는 함수
+    :param cut_video_files: 잘린 영상 파일들의 경로 리스트
+    :param cut_audio_files: 잘린 오디오 파일들의 경로 리스트
+    :param output_merged_directory: 합쳐진 영상 파일을 저장할 경로
+    """
+    if not os.path.exists(output_merged_directory):
+        os.makedirs(output_merged_directory)
+
+    for idx, (video_file, audio_file) in enumerate(zip(cut_video_files, cut_audio_files)):
+        # 출력 파일명 생성
+        output_merged_file = f"{output_merged_directory}/merged_video_{idx+1}.mp4"
+
+        # FFmpeg 명령어 생성 및 실행 (영상과 오디오를 합침)
+        command = [
+            'ffmpeg', '-i', video_file, '-i', audio_file, '-c:v', 'copy', '-c:a', 'aac', '-strict', 'experimental',
+            output_merged_file
+        ]
+        subprocess.run(command)
 
 
 def merge_videos(input_paths, output_path):
@@ -111,42 +171,15 @@ def upscale_video(input_video_path, output_video_path, scale_factor=2):
     out.release()
 
 
-def frame_to_time(frame, fps):
-    """
-    프레임을 시간(초)으로 변환
-    :param frame: 프레임 번호
-    :param fps: 초당 프레임 수 (Frames Per Second)
-    :return: 초 (시간 단위)
-    """
-    return frame / fps
-
-
-def cut_audio(input_audio, cut_ranges, fps, output_directory):
-    """
-    여러 구간의 프레임을 사용해 소리를 자르는 함수
-    :param input_audio: 원본 오디오 파일 경로
-    :param cut_ranges: (시작 프레임, 끝 프레임) 리스트
-    :param fps: 프레임 속도 (Frames Per Second)
-    :param output_directory: 잘린 오디오 파일을 저장할 경로
-    """
-    for idx, (start_frame, end_frame) in enumerate(cut_ranges):
-        # 프레임을 시간(초)으로 변환
-        start_time = frame_to_time(start_frame, fps)
-        end_time = frame_to_time(end_frame, fps)
-
-        # 출력 파일명 생성
-        output_audio = f"{output_directory}/cut_audio_{idx+1}.mp3"
-
-        # FFmpeg 명령어 생성 및 실행
-        command = [
-            'ffmpeg', '-i', input_audio, '-ss', str(start_time), '-to', str(end_time),
-            '-c', 'copy', output_audio
-        ]
-        subprocess.run(command)
-
-
 if __name__ == "__main__":
-    # 영상 자르기 예시
+
+    input_media = 'videos/IMG_1153.MOV'
+    fps = 30
+
+    output_audio_directory = './output_audio'  # 잘린 오디오 파일을 저장할 폴더 경로
+    output_video_directory = './output_video'  # 잘린 영상 파일을 저장할 폴더 경로
+    output_merged_directory = './clips'  # 합쳐진 파일을 저장할 폴더 경로
+
     input_video = 'IMG_1153.MOV'
     cut_video1 = 'cut_video1.mp4'
     cut_video2 = 'cut_video2.mp4'
@@ -189,26 +222,22 @@ if __name__ == "__main__":
         (50820, 51270),  # 이준범 태클성공-박건 슈팅
     ]
 
+    extract_and_cut_audio(input_media, cut_ranges, fps, output_audio_directory)
+
     # # 영상 자르기
     for idx, (start, end) in enumerate(cut_ranges, 1):
         output_cut = f'cut_video{idx}.mp4'
         cut_video(input_video, output_cut, start, end)
 
-    # 자른 영상 목록
-    video_list = [
-        'cut_video1', 'cut_video2', 'cut_video3', 'cut_video4', 'cut_video5',
-        'cut_video6', 'cut_video7', 'cut_video8', 'cut_video9', 'cut_video10',
-        'cut_video11', 'cut_video12', 'cut_video13', 'cut_video14', 'cut_video15', 'cut_video16', 'cut_video17',
-        'cut_video18'
-]
-    merged_video = '240927-first-half-hl.mp4'
-
-    # 영상 합치기
-    merge_videos(video_list, merged_video)
-
     # 경로 설정
-    upscaled_video = f'{merged_video}-upscaled.mp4'
-    final_output_video = f'{merged_video}-upscaled-with-audio.mp4'
+    cut_video_files = [f"{output_video_directory}/cut_video_{idx + 1}.mp4" for idx in range(len(cut_ranges))]
+    cut_audio_files = [f"{output_audio_directory}/cut_audio_{idx + 1}.mp3" for idx in range(len(cut_ranges))]
+    merged_video_files = [f"{output_video_directory}/merged_video"]
+    merge_audio_video(cut_video_files, cut_audio_files, output_merged_directory)
 
+    merge_videos(output_merged_directory, merged_video_files)
+
+    upscaled_video = f'{merged_video_files}-upscaled.mp4'
+    final_output_video = f'{merged_video_files}-upscaled-with-audio.mp4'
     # 영상 해상도 업스케일
-    upscale_video(merged_video, upscaled_video, scale_factor=2)
+    upscale_video(merged_video_files, upscaled_video, scale_factor=2)
